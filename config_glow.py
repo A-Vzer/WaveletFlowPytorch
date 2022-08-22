@@ -1,0 +1,17 @@
+model = "glow"
+K = 32
+L = 3
+kernel = 3
+hiddenChannels = 256
+n_res_blocks = 3
+actNormScale = 1.0
+imShape = [3, 64, 64]
+perm = "invconv"
+coupling = "affine"
+y_classes = None
+y_learn_top = False
+y_weight = None
+conditional = False
+y_condition = False 
+LU = True
+dataset = 'isic'

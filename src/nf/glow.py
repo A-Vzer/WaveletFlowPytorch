@@ -1,8 +1,10 @@
-import os, sys
-sys.path.append(os.path.dirname((os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+import os, sys, inspect
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0, parentdir) 
 import torch
 import torch.nn as nn
-from utilities import split_feature, uniform_binning_correction
+from utilities import *
 from nf.coupling import *
 from nf.layers import *
 import numpy as np
@@ -13,7 +15,6 @@ class FlowStep(nn.Module):
         hidden_channels = params.hiddenChannels
         self.flow_permutation = params.perm
         self.flow_coupling = params.coupling
-
         self.actnorm = ActNorm2d(C, params.actNormScale)
 
         # 2. permute
@@ -48,7 +49,7 @@ class FlowStep(nn.Module):
             return self.reverse_flow(input, conditioning, logdet)
 
     def normal_flow(self, input, conditioning, logdet):
-        # assert input.size(1) % 2 == 0
+
         # 1. actnorm
         z, logdet = self.actnorm(input, logdet=logdet)
         # 2. permute
@@ -58,10 +59,9 @@ class FlowStep(nn.Module):
         return z, logdet
 
     def reverse_flow(self, input, conditioning, logdet):
-        assert input.size(1) % 2 == 0
 
         # 1.coupling
-        z, logdet = self.coupling(input, conditioning, logdet, reverse=True)
+        z, logdet = self.coupling(input, logdet, conditioning, reverse=True)
 
         # 2. permute
         z, logdet = self.flow_permutation(z, logdet, True)
@@ -102,17 +102,19 @@ class FlowNet(nn.Module):
             
         return z, logdet
 
-    def decode(self, z, conditioning, temperature=None):
-        for layer in reversed(self.layers):
-            if isinstance(layer, Split2d):
-                z, logdet = layer(z, conditioning, logdet=0, reverse=True, temperature=temperature)
-            else:
+    def decode(self, z, conditioning, logdet, temperature=None):
+        for layer, shape in zip(reversed(self.layers), reversed(self.output_shapes)):
+            if isinstance(layer, SqueezeLayer):
+                z, logdet = layer(z, logdet=0, reverse=True)
+            elif isinstance(layer, FlowStep):
                 z, logdet = layer(z, conditioning, logdet=0, reverse=True)
+            else:
+                z, logdet = layer(z, logdet=0, reverse=True)
         return z, logdet
 
 
 class Glow(nn.Module):
-    def __init__(self, params, shape, conditional=False):
+    def __init__(self, params, shape, conditional):
         super().__init__()
         self.flow = FlowNet(params, shape, conditional)
         self.y_classes = params.y_classes
@@ -151,7 +153,7 @@ class Glow(nn.Module):
             h += yp.view(h.shape[0], channels, 1, 1)
         return split_feature(h, "split")
 
-    def forward(self, x=None, conditioning=None, y_onehot=None, z=None, temperature=None, reverse=False):
+    def forward(self, x=None, conditioning=None, y_onehot=None, z=None, temperature=None, reverse=False, **kwargs):
         if reverse:
             return self.reverse_flow(z, conditioning, y_onehot, temperature)
         else:
@@ -171,15 +173,15 @@ class Glow(nn.Module):
             y_logits = None
 
         # Full objective - converted to bits per dimension
-        # bpd = (-objective) / (math.log(2.0) * c * h * w)
-        return z, objective, y_logits
+        bpd = (-objective) / (math.log(2.0) * c * h * w)
+        return {"latent": z, "likelihood": bpd, "y_logits": y_logits}
 
     def reverse_flow(self, z, conditioning, y_onehot, temperature):
         with torch.no_grad():
             if z is None:
                 mean, logs = self.prior(z, y_onehot)
                 z = gaussian_sample(mean, logs, temperature)
-            x, logdet = self.flow(z, temperature=temperature, reverse=True)
+            x, logdet = self.flow(z, conditioning, temperature=temperature, reverse=True)
         return x, logdet
 
     def set_actnorm_init(self):

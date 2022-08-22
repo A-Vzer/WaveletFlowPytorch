@@ -3,15 +3,18 @@ import torch.nn as nn
 from utilities import split_feature
 from nf.convnet import ConvNet
 from nf.layers import SqueezeLayer
-import matplotlib.pyplot as plt
 import numpy as np
 
 
 class Affine(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_channels, conditional=True):
+    def __init__(self, in_channels, out_channels, hidden_channels, conditional):
         super().__init__()
+        
+        if out_channels % 2 != 0:
+            out_channels += 1
+            
         if conditional:
-            self.block = ConvNet(in_channels // 2 + 1 , out_channels, hidden_channels)
+            self.block = ConvNet(in_channels // 2 + in_channels // 3, out_channels, hidden_channels)
         else:
             self.block = ConvNet(in_channels // 2, out_channels, hidden_channels)
 
@@ -26,8 +29,8 @@ class Affine(nn.Module):
         s = torch.sigmoid(s + 2.0)
         return s, t, z1, z2
 
-    # add residual block conv
     def forward(self, x, logdet, conditioning=None, reverse=False):
+        
         s, t, z1, z2 = self.get_param(x, conditioning)
         if reverse:
             s = torch.sigmoid(s + 2.0)

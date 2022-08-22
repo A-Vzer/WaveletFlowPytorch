@@ -15,9 +15,9 @@ class ISIC(Dataset):
         self.gray = gray
         self.standardize = standardize
         if benign:
-            dir = cf.path + "/train/benign/"
+            dir = cf.path + "/benign/"
         else:
-            dir = cf.path + "/train/malignant/"
+            dir = cf.path + "/malignant/"
         
         self.images = []
 

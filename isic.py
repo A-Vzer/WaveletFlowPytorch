@@ -6,6 +6,8 @@ in_channels = 3
 weight_decay = 5e-5
 patch_size = [128,128]
 lr = 1e-4
+batch_size = 8
+grayscale = False
 
 degrees = [-180, 180]
 translate = [0.1, 0.1]
